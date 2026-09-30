@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Turbo Road</title>
+<style>
+:root{color-scheme:light dark}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+body{background:#0b1020;color:#fff;overflow:hidden}
+#app{min-height:100vh;background:#0b1020;display:flex;flex-direction:column;align-items:center;padding:14px}
+header{width:min(900px,100%);display:flex;justify-content:space-between;align-items:center;padding:4px 4px 12px}
+h1{font-size:clamp(22px,5vw,34px);margin:0;letter-spacing:.5px} .sub{opacity:.65;font-size:12px}
+.hud{display:flex;gap:8px}.pill{background:#171e35;border:1px solid #2a3555;border-radius:999px;padding:7px 12px;font-weight:700;font-size:13px}
+.game-wrap{width:min(900px,100%);position:relative;display:flex;justify-content:center}
+canvas{display:block;width:min(92vw,520px);height:auto;aspect-ratio:520/760;background:#182a18;border:3px solid #303b5c;border-radius:18px;box-shadow:0 20px 60px #0008;touch-action:none}
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}.card{pointer-events:auto;background:#10172bfa;border:1px solid #3a466b;border-radius:22px;padding:26px;text-align:center;width:min(82%,330px);box-shadow:0 20px 60px #000b}.card h2{margin:0 0 8px;font-size:28px}.card p{margin:6px 0 18px;opacity:.75;line-height:1.4}
+button{border:0;border-radius:14px;background:#ffcc33;color:#17120a;font-weight:900;padding:12px 20px;font-size:16px;cursor:pointer;box-shadow:0 5px 0 #b68713}button:active{transform:translateY(3px);box-shadow:0 2px 0 #b68713}
+.controls{width:min(900px,100%);display:flex;justify-content:center;gap:18px;padding:14px 0 0}.ctrl{width:76px;height:58px;font-size:25px;background:#202a48;color:white;border:1px solid #3a466b;box-shadow:0 4px 0 #11182c}.ctrl:active{box-shadow:0 1px 0 #11182c}.hint{font-size:12px;opacity:.5;margin-top:6px;text-align:center}
+@media (min-width:700px){.controls{display:none}.hint{margin-top:10px}}
+</style>
+</head>
+<body>
+<div id="app">
+<header><div><h1>🏎️ Turbo Road</h1><div class="sub">Dodge traffic • survive as long as you can</div></div><div class="hud"><div class="pill">Score <span id="score">0</span></div><div class="pill">Best <span id="best">0</span></div></div></header>
+<div class="game-wrap">
+<canvas id="game" width="520" height="760" aria-label="Car game"></canvas>
+<div class="overlay" id="overlay"><div class="card"><h2>Turbo Road</h2><p>Use ← → or the buttons to steer. Avoid the cars and beat your high score!</p><button id="start">START GAME</button></div></div>
+</div>
+<div class="controls"><button class="ctrl" data-dir="left">◀</button><button class="ctrl" data-dir="right">▶</button></div>
+<div class="hint">Computer: Arrow keys / A D &nbsp; • &nbsp; Phone: touch buttons</div>
+</div>
+<script>
+const c=document.getElementById('game'),x=c.getContext('2d'),W=c.width,H=c.height;
+const scoreEl=document.getElementById('score'),bestEl=document.getElementById('best'),overlay=document.getElementById('overlay'),start=document.getElementById('start');
+let best=Number(localStorage.getItem('turboRoadBest')||0);bestEl.textContent=best;
+let running=false,score=0,speed=5.2,roadY=0,last=0,spawn=0,keys={left:false,right:false},player,traffic=[];
+function reset(){score=0;speed=5.2;roadY=0;spawn=0;traffic=[];player={x:W/2-30,y:H-130,w:60,h:104};scoreEl.textContent=0}
+function rr(ctx,a,b,w,h,r){ctx.beginPath();ctx.roundRect(a,b,w,h,r);ctx.fill()}
+function car(o,color,playerCar=false){x.save();x.translate(o.x,o.y);x.fillStyle='#0005';rr(x,5,7,o.w,o.h,12);x.fillStyle=color;rr(x,0,0,o.w,o.h,12);x.fillStyle=playerCar?'#bfe9ff':'#d8dde8';rr(x,10,15,o.w-20,34,9);x.fillStyle='#0c1725';rr(x,14,19,o.w-28,24,6);x.fillStyle='#f7f7f7';rr(x,10,o.h-28,14,16,4);rr(x,o.w-24,o.h-28,14,16,4);x.fillStyle='#151515';rr(x,3,22,7,25,3);rr(x,o.w-10,22,7,25,3);x.fillStyle='#fff';rr(x,9,o.h-13,11,6,2);rr(x,o.w-20,o.h-13,11,6,2);x.restore()}
+function drawRoad(){x.fillStyle='#1e5528';x.fillRect(0,0,W,H);x.fillStyle='#30343b';x.fillRect(70,0,W-140,H);x.fillStyle='#c9b16b';x.fillRect(70,0,7,H);x.fillRect(W-77,0,7,H);x.fillStyle='#e8e8e8';for(let y=-70+(roadY%110);y<H;y+=110)x.fillRect(W/2-5,y,10,62);}
+function drawScenery(){for(let i=0;i<9;i++){let yy=(i*110+roadY*0.6)%H-40; x.fillStyle='#164521';x.beginPath();x.arc(35,yy,24,0,Math.PI*2);x.fill();x.beginPath();x.arc(W-35,yy+50,27,0,Math.PI*2);x.fill()}}
+function spawnCar(){let lanes=[120,230,340];let lane=lanes[Math.floor(Math.random()*lanes.length)];let colors=['#e94f4f','#4f83e9','#f1a33c','#9a65d6'];traffic.push({x:lane-30,y:-120,w:60,h:104,color:colors[Math.floor(Math.random()*colors.length)],speed:speed*(.72+Math.random()*.38)})}
+function hit(a,b){let pad=9;return a.x+pad<b.x+b.w-pad&&a.x+a.w-pad>b.x+pad&&a.y+pad<b.y+b.h-pad&&a.y+a.h-pad>b.y+pad}
+function gameOver(){running=false;best=Math.max(best,Math.floor(score));localStorage.setItem('turboRoadBest',best);bestEl.textContent=best;overlay.innerHTML='<div class="card"><h2>💥 Crash!</h2><p>Score: <b>'+Math.floor(score)+'</b><br>Best: <b>'+best+'</b></p><button id="start">PLAY AGAIN</button></div>';overlay.style.display='flex';document.getElementById('start').onclick=begin}
+function begin(){reset();running=true;overlay.style.display='none';last=performance.now();requestAnimationFrame(loop)}
+function loop(t){if(!running)return;let dt=Math.min((t-last)/16.67,2);last=t;speed+=0.0018*dt;roadY+=speed*dt;score+=0.11*speed*dt;scoreEl.textContent=Math.floor(score);spawn+=dt;if(spawn>Math.max(26,52-speed*2)){spawn=0;spawnCar()}
+if(keys.left)player.x-=6.8*dt;if(keys.right)player.x+=6.8*dt;player.x=Math.max(82,Math.min(W-82-player.w,player.x));
+traffic.forEach(o=>o.y+=o.speed*dt);traffic=traffic.filter(o=>o.y<H+130);for(const o of traffic)if(hit(player,o))return gameOver();
+x.clearRect(0,0,W,H);drawRoad();drawScenery();traffic.forEach(o=>car(o,o.color));car(player,'#27b3ff',true);requestAnimationFrame(loop)}
+window.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a')keys.left=true;if(e.key==='ArrowRight'||e.key.toLowerCase()==='d')keys.right=true;if((e.key===' '||e.key==='Enter')&&!running)begin()});
+window.addEventListener('keyup',e=>{if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a')keys.left=false;if(e.key==='ArrowRight'||e.key.toLowerCase()==='d')keys.right=false});
+document.querySelectorAll('.ctrl').forEach(b=>{const d=b.dataset.dir;const on=e=>{e.preventDefault();keys[d]=true},off=e=>{e.preventDefault();keys[d]=false};b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointercancel',off);b.addEventListener('pointerleave',off)});start.onclick=begin;reset();x.clearRect(0,0,W,H);drawRoad();drawScenery();car(player,'#27b3ff',true);
+</script>
+</body>
+</html>
